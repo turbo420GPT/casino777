@@ -2,6 +2,7 @@ import streamlit as st
 import aiosqlite
 import asyncio
 import json
+import os
 
 # Настройка страницы
 st.set_page_config(
@@ -9,6 +10,23 @@ st.set_page_config(
     page_icon="🎰",
     layout="wide"
 )
+
+# Функция инициализации базы данных
+async def init_db():
+    async with aiosqlite.connect("casino.db") as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                balance INTEGER DEFAULT 1000,
+                first_name TEXT,
+                last_name TEXT,
+                username TEXT
+            )
+        """)
+        await db.commit()
+
+# Инициализация базы данных при запуске
+asyncio.run(init_db())
 
 # Инициализация состояния сессии
 if 'user_data' not in st.session_state:
@@ -24,13 +42,17 @@ async def get_user_balance(user_id):
             return result[0] if result else 1000
 
 # Функция для обновления баланса
-async def update_balance(user_id, amount):
+async def update_balance(user_id, amount, first_name=None, last_name=None, username=None):
     async with aiosqlite.connect("casino.db") as db:
         await db.execute("""
-            INSERT INTO users (user_id, balance) 
-            VALUES (?, 1000) 
-            ON CONFLICT(user_id) DO UPDATE SET balance = balance + ?
-        """, (user_id, amount))
+            INSERT INTO users (user_id, balance, first_name, last_name, username) 
+            VALUES (?, 1000, ?, ?, ?) 
+            ON CONFLICT(user_id) DO UPDATE SET 
+                balance = balance + ?,
+                first_name = COALESCE(?, first_name),
+                last_name = COALESCE(?, last_name),
+                username = COALESCE(?, username)
+        """, (user_id, first_name, last_name, username, amount, first_name, last_name, username))
         await db.commit()
 
 # Заголовок приложения
@@ -57,6 +79,14 @@ if not st.session_state.is_logged_in:
                     'username': username
                 }
                 st.session_state.is_logged_in = True
+                # Сохраняем информацию о пользователе в базе данных
+                asyncio.run(update_balance(
+                    int(user_id),
+                    0,  # Начальный баланс уже установлен в базе данных
+                    first_name,
+                    last_name,
+                    username
+                ))
                 st.success(f"Добро пожаловать, {first_name}!")
                 st.rerun()
             else:
