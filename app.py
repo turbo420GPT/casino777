@@ -41,14 +41,15 @@ try:
         bot_token=st.secrets["BOT_TOKEN"],
         button_style="large",
         corner_radius=5,
-        request_access=True
+        request_access=True,
+        show_user_photo=True
     )
 
-    if user_data:
+    if user_data and isinstance(user_data, dict):
         st.session_state.user_data = user_data
-        st.success(f"Добро пожаловать, {user_data['first_name']}!")
+        st.success(f"Добро пожаловать, {user_data.get('first_name', 'Пользователь')}!")
 except Exception as e:
-    st.error("Произошла ошибка при авторизации. Пожалуйста, попробуйте обновить страницу.")
+    st.error(f"Произошла ошибка при авторизации: {str(e)}")
     st.stop()
 
 # Если пользователь авторизован, показываем интерфейс казино
