@@ -2,7 +2,6 @@ import streamlit as st
 import aiosqlite
 import asyncio
 import json
-from streamlit_telegram_login import TelegramLogin
 
 # Настройка страницы
 st.set_page_config(
@@ -14,6 +13,8 @@ st.set_page_config(
 # Инициализация состояния сессии
 if 'user_data' not in st.session_state:
     st.session_state.user_data = None
+if 'is_logged_in' not in st.session_state:
+    st.session_state.is_logged_in = False
 
 # Функция для получения баланса пользователя
 async def get_user_balance(user_id):
@@ -35,26 +36,41 @@ async def update_balance(user_id, amount):
 # Заголовок приложения
 st.title("🎰 Казино Telegram")
 
-# Компонент авторизации через Telegram
-try:
-    user_data = TelegramLogin(
-        bot_token=st.secrets["BOT_TOKEN"],
-        button_style="large",
-        corner_radius=5,
-        request_access=True,
-        show_user_photo=True
-    ).render()
-
-    if user_data and isinstance(user_data, dict):
-        st.session_state.user_data = user_data
-        st.success(f"Добро пожаловать, {user_data.get('first_name', 'Пользователь')}!")
-except Exception as e:
-    st.error(f"Произошла ошибка при авторизации: {str(e)}")
-    st.stop()
+# Если пользователь не авторизован, показываем форму входа
+if not st.session_state.is_logged_in:
+    st.subheader("Вход в систему")
+    
+    with st.form("login_form"):
+        user_id = st.text_input("ID пользователя Telegram")
+        first_name = st.text_input("Имя")
+        last_name = st.text_input("Фамилия")
+        username = st.text_input("Имя пользователя")
+        
+        submitted = st.form_submit_button("Войти")
+        
+        if submitted:
+            if user_id:
+                st.session_state.user_data = {
+                    'id': int(user_id),
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'username': username
+                }
+                st.session_state.is_logged_in = True
+                st.success(f"Добро пожаловать, {first_name}!")
+                st.experimental_rerun()
+            else:
+                st.error("Пожалуйста, введите ID пользователя")
 
 # Если пользователь авторизован, показываем интерфейс казино
-if st.session_state.user_data:
+if st.session_state.is_logged_in:
     user_id = st.session_state.user_data['id']
+    
+    # Кнопка выхода
+    if st.button("Выйти"):
+        st.session_state.is_logged_in = False
+        st.session_state.user_data = None
+        st.experimental_rerun()
     
     # Получаем баланс пользователя
     balance = asyncio.run(get_user_balance(user_id))
