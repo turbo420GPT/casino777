@@ -2,7 +2,7 @@ import streamlit as st
 import aiosqlite
 import asyncio
 import json
-from streamlit_telegram_login import telegram_login
+from streamlit_telegram_login import TelegramLogin
 
 # Настройка страницы
 st.set_page_config(
@@ -37,13 +37,13 @@ st.title("🎰 Казино Telegram")
 
 # Компонент авторизации через Telegram
 try:
-    user_data = telegram_login(
+    user_data = TelegramLogin(
         bot_token=st.secrets["BOT_TOKEN"],
         button_style="large",
         corner_radius=5,
         request_access=True,
         show_user_photo=True
-    )
+    ).render()
 
     if user_data and isinstance(user_data, dict):
         st.session_state.user_data = user_data
