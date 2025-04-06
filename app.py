@@ -36,16 +36,20 @@ async def update_balance(user_id, amount):
 st.title("🎰 Казино Telegram")
 
 # Компонент авторизации через Telegram
-user_data = telegram_login(
-    bot_token=st.secrets["BOT_TOKEN"],
-    button_style="large",
-    corner_radius=5,
-    request_access=True
-)
+try:
+    user_data = telegram_login(
+        bot_token=st.secrets["BOT_TOKEN"],
+        button_style="large",
+        corner_radius=5,
+        request_access=True
+    )
 
-if user_data:
-    st.session_state.user_data = user_data
-    st.success(f"Добро пожаловать, {user_data['first_name']}!")
+    if user_data:
+        st.session_state.user_data = user_data
+        st.success(f"Добро пожаловать, {user_data['first_name']}!")
+except Exception as e:
+    st.error("Произошла ошибка при авторизации. Пожалуйста, попробуйте обновить страницу.")
+    st.stop()
 
 # Если пользователь авторизован, показываем интерфейс казино
 if st.session_state.user_data:
