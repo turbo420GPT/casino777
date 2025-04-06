@@ -58,7 +58,7 @@ if not st.session_state.is_logged_in:
                 }
                 st.session_state.is_logged_in = True
                 st.success(f"Добро пожаловать, {first_name}!")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Пожалуйста, введите ID пользователя")
 
@@ -70,7 +70,7 @@ if st.session_state.is_logged_in:
     if st.button("Выйти"):
         st.session_state.is_logged_in = False
         st.session_state.user_data = None
-        st.experimental_rerun()
+        st.rerun()
     
     # Получаем баланс пользователя
     balance = asyncio.run(get_user_balance(user_id))
