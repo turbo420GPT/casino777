@@ -149,9 +149,10 @@ async def authenticate_user(username, password):
 # Функция для получения баланса пользователя
 async def get_user_balance(user_id):
     async with aiosqlite.connect("casino.db") as db:
+        db.row_factory = sqlite3.Row  # Устанавливаем row_factory для получения словаря
         async with db.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)) as cursor:
             result = await cursor.fetchone()
-            return result[0] if result else 1000
+            return result['balance'] if result else 1000  # Используем доступ по ключу
 
 # Функция для обновления баланса
 async def update_balance(user_id, amount):
@@ -164,8 +165,10 @@ async def update_balance(user_id, amount):
 # Функция для получения топа игроков
 async def get_top_players():
     async with aiosqlite.connect("casino.db") as db:
+        db.row_factory = sqlite3.Row  # Устанавливаем row_factory для получения словаря
         async with db.execute("SELECT * FROM users ORDER BY balance DESC LIMIT 10") as cursor:
-            return await cursor.fetchall()
+            players = await cursor.fetchall()
+            return [dict(player) for player in players]  # Преобразуем каждую строку в словарь
 
 # Функция для перевода средств
 async def transfer_money(from_user_id, to_user_id, amount):
@@ -348,9 +351,12 @@ def main():
             
             with tab2:
                 st.header("📊 Топ игроков")
-                top_players = asyncio.run(get_top_players())
-                for i, player in enumerate(top_players, 1):
-                    st.write(f"{i}. {player['username']} - {player['balance']} монет")
+                try:
+                    top_players = asyncio.run(get_top_players())
+                    for i, player in enumerate(top_players, 1):
+                        st.write(f"{i}. {player['username']} - {player['balance']} монет")
+                except Exception as e:
+                    st.error(f"Ошибка при загрузке топа игроков: {str(e)}")
             
             with tab3:
                 st.header("💸 Перевод средств")
