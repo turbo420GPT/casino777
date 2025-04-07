@@ -23,22 +23,29 @@ st.set_page_config(
 
 # Функция инициализации базы данных
 async def init_db():
-    async with aiosqlite.connect("casino.db") as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                username TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL,
-                balance INTEGER DEFAULT 1000,
-                first_name TEXT,
-                last_name TEXT,
-                telegram_username TEXT
-            )
-        """)
-        await db.commit()
+    try:
+        async with aiosqlite.connect("casino.db") as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id INTEGER PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
+                    balance INTEGER DEFAULT 1000,
+                    first_name TEXT,
+                    last_name TEXT,
+                    telegram_username TEXT
+                )
+            """)
+            await db.commit()
+            print("База данных успешно инициализирована")
+    except Exception as e:
+        print(f"Ошибка при инициализации базы данных: {str(e)}")
 
 # Инициализация базы данных при запуске
-asyncio.run(init_db())
+try:
+    asyncio.run(init_db())
+except Exception as e:
+    print(f"Ошибка при запуске: {str(e)}")
 
 # Инициализация состояния сессии
 if 'user_data' not in st.session_state:
@@ -56,12 +63,21 @@ def verify_password(password, hashed_password):
 
 # Функция для регистрации пользователя
 async def register_user(username, password, first_name=None, last_name=None, telegram_username=None):
-    async with aiosqlite.connect("casino.db") as db:
-        try:
+    try:
+        print(f"Попытка регистрации пользователя: {username}")
+        async with aiosqlite.connect("casino.db") as db:
+            # Проверяем, существует ли пользователь
+            async with db.execute("SELECT username FROM users WHERE username = ?", (username,)) as cursor:
+                existing_user = await cursor.fetchone()
+                if existing_user:
+                    print(f"Пользователь {username} уже существует")
+                    return False
+            
             # Получаем максимальный user_id
             async with db.execute("SELECT MAX(user_id) FROM users") as cursor:
                 max_id = await cursor.fetchone()
                 new_user_id = (max_id[0] or 0) + 1
+                print(f"Новый user_id: {new_user_id}")
             
             hashed_password = hash_password(password)
             await db.execute("""
@@ -69,16 +85,16 @@ async def register_user(username, password, first_name=None, last_name=None, tel
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (new_user_id, username, hashed_password, first_name, last_name, telegram_username))
             await db.commit()
+            print(f"Пользователь {username} успешно зарегистрирован")
             return True
-        except aiosqlite.IntegrityError:
-            return False
-        except Exception as e:
-            print(f"Ошибка при регистрации: {str(e)}")
-            return False
+    except Exception as e:
+        print(f"Ошибка при регистрации: {str(e)}")
+        return False
 
 # Функция для аутентификации пользователя
 async def authenticate_user(username, password):
     try:
+        print(f"Попытка аутентификации пользователя: {username}")
         async with aiosqlite.connect("casino.db") as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute("SELECT * FROM users WHERE username = ?", (username,))
@@ -86,6 +102,7 @@ async def authenticate_user(username, password):
             await cursor.close()
             
             if user:
+                print(f"Пользователь {username} найден в базе данных")
                 user_dict = {
                     'user_id': user['user_id'],
                     'username': user['username'],
@@ -96,7 +113,12 @@ async def authenticate_user(username, password):
                     'telegram_username': user['telegram_username']
                 }
                 if verify_password(password, user_dict['password']):
+                    print(f"Пароль для пользователя {username} верный")
                     return user_dict
+                else:
+                    print(f"Неверный пароль для пользователя {username}")
+            else:
+                print(f"Пользователь {username} не найден")
             return None
     except Exception as e:
         print(f"Ошибка при аутентификации: {str(e)}")
@@ -168,7 +190,7 @@ if not hasattr(st.session_state, 'bot_thread'):
 # Основной интерфейс
 def main():
     st.title("🎰 Казино Telegram")
-    
+
     # Если пользователь не авторизован, показываем форму входа/регистрации
     if not st.session_state.is_logged_in:
         # Создаем две колонки для входа и регистрации
@@ -182,19 +204,22 @@ def main():
                 login_submitted = st.form_submit_button("Войти")
                 
                 if login_submitted:
-                    user = asyncio.run(authenticate_user(login_username, login_password))
-                    if user:
-                        st.session_state.user_data = {
-                            'id': user['user_id'],
-                            'username': user['username'],
-                            'first_name': user['first_name'],
-                            'last_name': user['last_name']
-                        }
-                        st.session_state.is_logged_in = True
-                        st.success("Успешный вход!")
-                        st.rerun()
-                    else:
-                        st.error("Неверное имя пользователя или пароль")
+                    try:
+                        user = asyncio.run(authenticate_user(login_username, login_password))
+                        if user:
+                            st.session_state.user_data = {
+                                'id': user['user_id'],
+                                'username': user['username'],
+                                'first_name': user['first_name'],
+                                'last_name': user['last_name']
+                            }
+                            st.session_state.is_logged_in = True
+                            st.success("Успешный вход!")
+                            st.rerun()
+                        else:
+                            st.error("Неверное имя пользователя или пароль")
+                    except Exception as e:
+                        st.error(f"Произошла ошибка при входе: {str(e)}")
         
         with col2:
             st.header("Регистрация")
@@ -207,17 +232,21 @@ def main():
                 reg_submitted = st.form_submit_button("Зарегистрироваться")
                 
                 if reg_submitted:
-                    if reg_password != confirm_password:
-                        st.error("Пароли не совпадают")
-                    elif len(reg_username) < 3:
-                        st.error("Имя пользователя должно содержать минимум 3 символа")
-                    elif len(reg_password) < 6:
-                        st.error("Пароль должен содержать минимум 6 символов")
-                    else:
-                        if asyncio.run(register_user(reg_username, reg_password, reg_first_name, reg_last_name)):
-                            st.success("Регистрация успешна! Теперь вы можете войти.")
+                    try:
+                        if reg_password != confirm_password:
+                            st.error("Пароли не совпадают")
+                        elif len(reg_username) < 3:
+                            st.error("Имя пользователя должно содержать минимум 3 символа")
+                        elif len(reg_password) < 6:
+                            st.error("Пароль должен содержать минимум 6 символов")
                         else:
-                            st.error("Имя пользователя уже занято")
+                            success = asyncio.run(register_user(reg_username, reg_password, reg_first_name, reg_last_name))
+                            if success:
+                                st.success("Регистрация успешна! Теперь вы можете войти.")
+                            else:
+                                st.error("Имя пользователя уже занято")
+                    except Exception as e:
+                        st.error(f"Произошла ошибка при регистрации: {str(e)}")
 
     # Если пользователь авторизован, показываем интерфейс казино
     else:
@@ -230,90 +259,99 @@ def main():
             st.rerun()
         
         # Получаем баланс пользователя
-        balance = asyncio.run(get_user_balance(user_id))
-        
-        # Отображаем профиль пользователя
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            # Используем эмодзи вместо изображения
-            st.markdown("""
-            <div style="
-                width: 150px;
-                height: 150px;
-                background-color: #4CAF50;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 60px;
-                color: white;
-                margin: 0 auto;
-            ">
-                👤
-            </div>
-            """, unsafe_allow_html=True)
-        with col2:
-            st.header(f"👤 {st.session_state.user_data['username']}")
-            st.subheader(f"💰 Баланс: {balance} монет")
-        
-        # Создаем вкладки
-        tab1, tab2, tab3 = st.tabs(["🎲 Рулетка", "📊 Топ игроков", "💸 Перевод"])
-        
-        with tab1:
-            st.header("🎲 Игра в рулетку")
-            bet = st.number_input("Ваша ставка", min_value=1, max_value=balance)
-            numbers = st.multiselect("Выберите 3 числа (1-36)", range(1, 37), max_selections=3)
+        try:
+            balance = asyncio.run(get_user_balance(user_id))
             
-            if st.button("Крутить рулетку"):
-                if len(numbers) != 3:
-                    st.error("Пожалуйста, выберите 3 числа!")
-                else:
-                    # Анимация рулетки
-                    placeholder = st.empty()
-                    for i in range(10):
-                        random_number = random.randint(1, 36)
-                        placeholder.write(f"🎲 Выпало: {random_number}")
-                        time.sleep(0.2)
-                    
-                    final_number = random.randint(1, 36)
-                    placeholder.write(f"🎲 Выпало: {final_number}")
-                    
-                    if final_number in numbers:
-                        winnings = bet * 36
-                        st.success(f"Поздравляем! Вы выиграли {winnings} монет!")
-                        asyncio.run(update_balance(user_id, winnings))
-                    else:
-                        st.error("К сожалению, вы проиграли!")
-                        asyncio.run(update_balance(user_id, -bet))
-        
-        with tab2:
-            st.header("📊 Топ игроков")
-            top_players = asyncio.run(get_top_players())
-            for i, player in enumerate(top_players, 1):
-                st.write(f"{i}. {player['username']} - {player['balance']} монет")
-        
-        with tab3:
-            st.header("💸 Перевод средств")
-            recipient = st.text_input("Ник получателя")
-            amount = st.number_input("Сумма перевода", min_value=1, max_value=balance)
+            # Отображаем профиль пользователя
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                # Используем эмодзи вместо изображения
+                st.markdown("""
+                <div style="
+                    width: 150px;
+                    height: 150px;
+                    background-color: #4CAF50;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 60px;
+                    color: white;
+                    margin: 0 auto;
+                ">
+                    👤
+                </div>
+                """, unsafe_allow_html=True)
+            with col2:
+                st.header(f"👤 {st.session_state.user_data['username']}")
+                st.subheader(f"💰 Баланс: {balance} монет")
             
-            if st.button("Перевести"):
-                async def process_transfer():
-                    async with aiosqlite.connect("casino.db") as db:
-                        db.row_factory = sqlite3.Row
-                        cursor = await db.execute("SELECT * FROM users WHERE username = ?", (recipient,))
-                        recipient_data = await cursor.fetchone()
-                        await cursor.close()
-                        
-                        if recipient_data:
-                            if await transfer_money(user_id, recipient_data['user_id'], amount):
-                                st.success(f"Успешно переведено {amount} монет пользователю {recipient}")
-                            else:
-                                st.error("Ошибка при переводе средств")
-                        else:
-                            st.error("Пользователь не найден")
+            # Создаем вкладки
+            tab1, tab2, tab3 = st.tabs(["🎲 Рулетка", "📊 Топ игроков", "💸 Перевод"])
+            
+            with tab1:
+                st.header("🎲 Игра в рулетку")
+                bet = st.number_input("Ваша ставка", min_value=1, max_value=balance)
+                numbers = st.multiselect("Выберите 3 числа (1-36)", range(1, 37), max_selections=3)
                 
-                asyncio.run(process_transfer())
+                if st.button("Крутить рулетку"):
+                    if len(numbers) != 3:
+                        st.error("Пожалуйста, выберите 3 числа!")
+                    else:
+                        # Анимация рулетки
+                        placeholder = st.empty()
+                        for i in range(10):
+                            random_number = random.randint(1, 36)
+                            placeholder.write(f"🎲 Выпало: {random_number}")
+                            time.sleep(0.2)
+                        
+                        final_number = random.randint(1, 36)
+                        placeholder.write(f"🎲 Выпало: {final_number}")
+                        
+                        if final_number in numbers:
+                            winnings = bet * 36
+                            st.success(f"Поздравляем! Вы выиграли {winnings} монет!")
+                            asyncio.run(update_balance(user_id, winnings))
+                        else:
+                            st.error("К сожалению, вы проиграли!")
+                            asyncio.run(update_balance(user_id, -bet))
+            
+            with tab2:
+                st.header("📊 Топ игроков")
+                top_players = asyncio.run(get_top_players())
+                for i, player in enumerate(top_players, 1):
+                    st.write(f"{i}. {player['username']} - {player['balance']} монет")
+            
+            with tab3:
+                st.header("💸 Перевод средств")
+                recipient = st.text_input("Ник получателя")
+                amount = st.number_input("Сумма перевода", min_value=1, max_value=balance)
+                
+                if st.button("Перевести"):
+                    try:
+                        async def process_transfer():
+                            async with aiosqlite.connect("casino.db") as db:
+                                db.row_factory = sqlite3.Row
+                                cursor = await db.execute("SELECT * FROM users WHERE username = ?", (recipient,))
+                                recipient_data = await cursor.fetchone()
+                                await cursor.close()
+                                
+                                if recipient_data:
+                                    if await transfer_money(user_id, recipient_data['user_id'], amount):
+                                        st.success(f"Успешно переведено {amount} монет пользователю {recipient}")
+                                    else:
+                                        st.error("Ошибка при переводе средств")
+                                else:
+                                    st.error("Пользователь не найден")
+                        
+                        asyncio.run(process_transfer())
+                    except Exception as e:
+                        st.error(f"Произошла ошибка при переводе: {str(e)}")
+        except Exception as e:
+            st.error(f"Произошла ошибка при загрузке данных: {str(e)}")
+            st.session_state.is_logged_in = False
+            st.session_state.user_data = None
+            st.rerun()
 
 # Стилизация
 st.markdown("""
@@ -372,7 +410,7 @@ st.markdown("""
         color: #FFFFFF;
     }
 </style>
-""", unsafe_allow_html=True)
+""", unsafe_allow_html=True) 
 
 if __name__ == "__main__":
     main() 
