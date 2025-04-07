@@ -52,14 +52,22 @@ def verify_password(password, hashed_password):
 async def register_user(username, password, first_name=None, last_name=None, telegram_username=None):
     async with aiosqlite.connect("casino.db") as db:
         try:
+            # Получаем максимальный user_id
+            async with db.execute("SELECT MAX(user_id) FROM users") as cursor:
+                max_id = await cursor.fetchone()
+                new_user_id = (max_id[0] or 0) + 1
+            
             hashed_password = hash_password(password)
             await db.execute("""
-                INSERT INTO users (username, password, first_name, last_name, telegram_username)
-                VALUES (?, ?, ?, ?, ?)
-            """, (username, hashed_password, first_name, last_name, telegram_username))
+                INSERT INTO users (user_id, username, password, first_name, last_name, telegram_username)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (new_user_id, username, hashed_password, first_name, last_name, telegram_username))
             await db.commit()
             return True
         except aiosqlite.IntegrityError:
+            return False
+        except Exception as e:
+            print(f"Ошибка при регистрации: {str(e)}")
             return False
 
 # Функция для аутентификации пользователя
@@ -212,8 +220,8 @@ def main():
 st.markdown("""
 <style>
     .stApp {
-        background-color: #1E1E1E;
-        color: white;
+        background-color: #2E2E2E;
+        color: #FFFFFF;
     }
     .stButton>button {
         background-color: #4CAF50;
@@ -223,20 +231,46 @@ st.markdown("""
         font-size: 16px;
     }
     .stNumberInput>div>div>input {
-        background-color: #2E2E2E;
-        color: white;
+        background-color: #3E3E3E;
+        color: #FFFFFF;
     }
     .stTextInput>div>div>input {
-        background-color: #2E2E2E;
-        color: white;
+        background-color: #3E3E3E;
+        color: #FFFFFF;
     }
     .stForm {
-        background-color: #2E2E2E;
+        background-color: #3E3E3E;
         padding: 20px;
         border-radius: 10px;
+        color: #FFFFFF;
     }
     h1, h2, h3 {
         color: #4CAF50;
+    }
+    .stTextInput>div>div>label {
+        color: #FFFFFF;
+    }
+    .stNumberInput>div>div>label {
+        color: #FFFFFF;
+    }
+    .stMarkdown {
+        color: #FFFFFF;
+    }
+    .stAlert {
+        background-color: #3E3E3E;
+        color: #FFFFFF;
+    }
+    .stSuccess {
+        background-color: #2E7D32;
+        color: #FFFFFF;
+    }
+    .stError {
+        background-color: #C62828;
+        color: #FFFFFF;
+    }
+    .stInfo {
+        background-color: #1565C0;
+        color: #FFFFFF;
     }
 </style>
 """, unsafe_allow_html=True)
