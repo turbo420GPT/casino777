@@ -6,6 +6,7 @@ import os
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 import hashlib
+import threading
 
 # Настройка страницы
 st.set_page_config(
@@ -99,16 +100,21 @@ async def miniapp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
     )
 
-# Инициализация бота
-async def init_bot():
-    application = Application.builder().token(os.getenv("BOT_TOKEN")).build()
-    application.add_handler(CommandHandler("miniapp", miniapp_command))
-    await application.initialize()
-    await application.start()
-    await application.run_polling()
+# Функция для запуска бота в отдельном потоке
+def run_bot():
+    async def bot_main():
+        application = Application.builder().token(os.getenv("BOT_TOKEN")).build()
+        application.add_handler(CommandHandler("miniapp", miniapp_command))
+        await application.initialize()
+        await application.start()
+        await application.run_polling()
+    
+    asyncio.run(bot_main())
 
-# Запуск бота в фоновом режиме
-asyncio.create_task(init_bot())
+# Запуск бота в отдельном потоке
+if not hasattr(st.session_state, 'bot_thread'):
+    st.session_state.bot_thread = threading.Thread(target=run_bot, daemon=True)
+    st.session_state.bot_thread.start()
 
 # Основной интерфейс
 def main():
