@@ -7,6 +7,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 import hashlib
 import threading
+import sqlite3
 
 # Настройка страницы
 st.set_page_config(
@@ -72,23 +73,29 @@ async def register_user(username, password, first_name=None, last_name=None, tel
 
 # Функция для аутентификации пользователя
 async def authenticate_user(username, password):
-    async with aiosqlite.connect("casino.db") as db:
-        async with db.execute("SELECT * FROM users WHERE username = ?", (username,)) as cursor:
+    try:
+        async with aiosqlite.connect("casino.db") as db:
+            db.row_factory = sqlite3.Row
+            cursor = await db.execute("SELECT * FROM users WHERE username = ?", (username,))
             user = await cursor.fetchone()
+            await cursor.close()
+            
             if user:
-                # Преобразуем кортеж в словарь
                 user_dict = {
-                    'user_id': user[0],
-                    'username': user[1],
-                    'password': user[2],
-                    'balance': user[3],
-                    'first_name': user[4],
-                    'last_name': user[5],
-                    'telegram_username': user[6]
+                    'user_id': user['user_id'],
+                    'username': user['username'],
+                    'password': user['password'],
+                    'balance': user['balance'],
+                    'first_name': user['first_name'],
+                    'last_name': user['last_name'],
+                    'telegram_username': user['telegram_username']
                 }
                 if verify_password(password, user_dict['password']):
                     return user_dict
             return None
+    except Exception as e:
+        print(f"Ошибка при аутентификации: {str(e)}")
+        return None
 
 # Функция для получения баланса пользователя
 async def get_user_balance(user_id):
