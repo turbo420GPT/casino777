@@ -102,15 +102,24 @@ async def register_user(username, password, first_name=None, last_name=None, tel
                 print(f"Новый user_id: {new_user_id}")
             
             hashed_password = hash_password(password)
-            await db.execute("""
-                INSERT INTO users (user_id, username, password, first_name, last_name, telegram_username)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (new_user_id, username, hashed_password, first_name, last_name, telegram_username))
-            await db.commit()
-            print(f"Пользователь {username} успешно зарегистрирован")
-            return True
+            print(f"Хешированный пароль: {hashed_password}")
+            
+            try:
+                await db.execute("""
+                    INSERT INTO users (user_id, username, password, first_name, last_name, telegram_username)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (new_user_id, username, hashed_password, first_name, last_name, telegram_username))
+                await db.commit()
+                print(f"Пользователь {username} успешно зарегистрирован")
+                return True
+            except aiosqlite.IntegrityError as e:
+                print(f"Ошибка целостности при регистрации: {str(e)}")
+                return False
+            except Exception as e:
+                print(f"Неожиданная ошибка при регистрации: {str(e)}")
+                return False
     except Exception as e:
-        print(f"Ошибка при регистрации: {str(e)}")
+        print(f"Общая ошибка при регистрации: {str(e)}")
         return False
 
 # Функция для аутентификации пользователя
@@ -198,21 +207,25 @@ async def miniapp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Функция для запуска бота в отдельном потоке
 def run_bot():
-    def bot_main():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        application = Application.builder().token(os.getenv("BOT_TOKEN")).build()
-        application.add_handler(CommandHandler("miniapp", miniapp_command))
-        loop.run_until_complete(application.initialize())
-        loop.run_until_complete(application.start())
-        loop.run_until_complete(application.run_polling())
-    
-    bot_thread = threading.Thread(target=bot_main, daemon=True)
-    bot_thread.start()
+    if not hasattr(st.session_state, 'bot_running'):
+        def bot_main():
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                application = Application.builder().token(os.getenv("BOT_TOKEN")).build()
+                application.add_handler(CommandHandler("miniapp", miniapp_command))
+                loop.run_until_complete(application.initialize())
+                loop.run_until_complete(application.start())
+                loop.run_until_complete(application.run_polling())
+            except Exception as e:
+                print(f"Ошибка в боте: {str(e)}")
+        
+        bot_thread = threading.Thread(target=bot_main, daemon=True)
+        bot_thread.start()
+        st.session_state.bot_running = True
 
 # Запуск бота в отдельном потоке
-if not hasattr(st.session_state, 'bot_thread'):
-    run_bot()
+run_bot()
 
 # Основной интерфейс
 def main():
