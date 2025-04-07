@@ -8,6 +8,11 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 import hashlib
 import threading
 import sqlite3
+import random
+import time
+from PIL import Image
+import requests
+from io import BytesIO
 
 # Настройка страницы
 st.set_page_config(
@@ -111,6 +116,24 @@ async def update_balance(user_id, amount):
             UPDATE users SET balance = balance + ? WHERE user_id = ?
         """, (amount, user_id))
         await db.commit()
+
+# Функция для получения топа игроков
+async def get_top_players():
+    async with aiosqlite.connect("casino.db") as db:
+        async with db.execute("SELECT * FROM users ORDER BY balance DESC LIMIT 10") as cursor:
+            return await cursor.fetchall()
+
+# Функция для перевода средств
+async def transfer_money(from_user_id, to_user_id, amount):
+    async with aiosqlite.connect("casino.db") as db:
+        try:
+            await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (amount, from_user_id))
+            await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, to_user_id))
+            await db.commit()
+            return True
+        except:
+            await db.rollback()
+            return False
 
 # Функция для обработки команды /miniapp
 async def miniapp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -233,22 +256,64 @@ def main():
             st.header(f"👤 {st.session_state.user_data['username']}")
             st.subheader(f"💰 Баланс: {balance} монет")
         
-        # Создаем колонки для игр
-        col1, col2 = st.columns(2)
+        # Создаем вкладки
+        tab1, tab2, tab3 = st.tabs(["🎲 Рулетка", "📊 Топ игроков", "💸 Перевод"])
         
-        with col1:
-            st.header("🎰 Слоты")
-            bet = st.number_input("Ваша ставка:", min_value=1, max_value=balance, value=1)
+        with tab1:
+            st.header("🎲 Игра в рулетку")
+            bet = st.number_input("Ваша ставка", min_value=1, max_value=balance)
+            numbers = st.multiselect("Выберите 3 числа (1-36)", range(1, 37), max_selections=3)
             
-            if st.button("Крутить"):
-                win = bet * 2  # Пример выигрыша
-                asyncio.run(update_balance(user_id, win))
-                st.success(f"Вы выиграли {win} монет!")
-                st.balloons()
+            if st.button("Крутить рулетку"):
+                if len(numbers) != 3:
+                    st.error("Пожалуйста, выберите 3 числа!")
+                else:
+                    # Анимация рулетки
+                    placeholder = st.empty()
+                    for i in range(10):
+                        random_number = random.randint(1, 36)
+                        placeholder.write(f"🎲 Выпало: {random_number}")
+                        time.sleep(0.2)
+                    
+                    final_number = random.randint(1, 36)
+                    placeholder.write(f"🎲 Выпало: {final_number}")
+                    
+                    if final_number in numbers:
+                        winnings = bet * 36
+                        st.success(f"Поздравляем! Вы выиграли {winnings} монет!")
+                        asyncio.run(update_balance(user_id, winnings))
+                    else:
+                        st.error("К сожалению, вы проиграли!")
+                        asyncio.run(update_balance(user_id, -bet))
         
-        with col2:
-            st.header("🎲 Другие игры")
-            st.info("Скоро появятся новые игры!")
+        with tab2:
+            st.header("📊 Топ игроков")
+            top_players = asyncio.run(get_top_players())
+            for i, player in enumerate(top_players, 1):
+                st.write(f"{i}. {player['username']} - {player['balance']} монет")
+        
+        with tab3:
+            st.header("💸 Перевод средств")
+            recipient = st.text_input("Ник получателя")
+            amount = st.number_input("Сумма перевода", min_value=1, max_value=balance)
+            
+            if st.button("Перевести"):
+                async def process_transfer():
+                    async with aiosqlite.connect("casino.db") as db:
+                        db.row_factory = sqlite3.Row
+                        cursor = await db.execute("SELECT * FROM users WHERE username = ?", (recipient,))
+                        recipient_data = await cursor.fetchone()
+                        await cursor.close()
+                        
+                        if recipient_data:
+                            if await transfer_money(user_id, recipient_data['user_id'], amount):
+                                st.success(f"Успешно переведено {amount} монет пользователю {recipient}")
+                            else:
+                                st.error("Ошибка при переводе средств")
+                        else:
+                            st.error("Пользователь не найден")
+                
+                asyncio.run(process_transfer())
 
 # Стилизация
 st.markdown("""
