@@ -212,7 +212,23 @@ def main():
         # Отображаем профиль пользователя
         col1, col2 = st.columns([1, 3])
         with col1:
-            st.image("default_avatar.png", width=150)
+            # Используем эмодзи вместо изображения
+            st.markdown("""
+            <div style="
+                width: 150px;
+                height: 150px;
+                background-color: #4CAF50;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 60px;
+                color: white;
+                margin: 0 auto;
+            ">
+                👤
+            </div>
+            """, unsafe_allow_html=True)
         with col2:
             st.header(f"👤 {st.session_state.user_data['username']}")
             st.subheader(f"💰 Баланс: {balance} монет")
