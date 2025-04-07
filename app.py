@@ -53,6 +53,28 @@ if 'user_data' not in st.session_state:
 if 'is_logged_in' not in st.session_state:
     st.session_state.is_logged_in = False
 
+# Функция для сохранения состояния сессии
+def save_session_state():
+    if st.session_state.is_logged_in and st.session_state.user_data:
+        with open('session.json', 'w') as f:
+            json.dump({
+                'is_logged_in': st.session_state.is_logged_in,
+                'user_data': st.session_state.user_data
+            }, f)
+
+# Функция для загрузки состояния сессии
+def load_session_state():
+    try:
+        with open('session.json', 'r') as f:
+            data = json.load(f)
+            st.session_state.is_logged_in = data['is_logged_in']
+            st.session_state.user_data = data['user_data']
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+# Загрузка состояния сессии при запуске
+load_session_state()
+
 # Функция для хеширования пароля
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -173,19 +195,21 @@ async def miniapp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Функция для запуска бота в отдельном потоке
 def run_bot():
-    async def bot_main():
+    def bot_main():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         application = Application.builder().token(os.getenv("BOT_TOKEN")).build()
         application.add_handler(CommandHandler("miniapp", miniapp_command))
-        await application.initialize()
-        await application.start()
-        await application.run_polling()
+        loop.run_until_complete(application.initialize())
+        loop.run_until_complete(application.start())
+        loop.run_until_complete(application.run_polling())
     
-    asyncio.run(bot_main())
+    bot_thread = threading.Thread(target=bot_main, daemon=True)
+    bot_thread.start()
 
 # Запуск бота в отдельном потоке
 if not hasattr(st.session_state, 'bot_thread'):
-    st.session_state.bot_thread = threading.Thread(target=run_bot, daemon=True)
-    st.session_state.bot_thread.start()
+    run_bot()
 
 # Основной интерфейс
 def main():
@@ -214,6 +238,7 @@ def main():
                                 'last_name': user['last_name']
                             }
                             st.session_state.is_logged_in = True
+                            save_session_state()  # Сохраняем состояние сессии
                             st.success("Успешный вход!")
                             st.rerun()
                         else:
@@ -256,6 +281,11 @@ def main():
         if st.button("Выйти"):
             st.session_state.is_logged_in = False
             st.session_state.user_data = None
+            # Удаляем файл сессии при выходе
+            try:
+                os.remove('session.json')
+            except FileNotFoundError:
+                pass
             st.rerun()
         
         # Получаем баланс пользователя
