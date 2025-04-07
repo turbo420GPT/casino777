@@ -75,8 +75,19 @@ async def authenticate_user(username, password):
     async with aiosqlite.connect("casino.db") as db:
         async with db.execute("SELECT * FROM users WHERE username = ?", (username,)) as cursor:
             user = await cursor.fetchone()
-            if user and verify_password(password, user['password']):
-                return user
+            if user:
+                # Преобразуем кортеж в словарь
+                user_dict = {
+                    'user_id': user[0],
+                    'username': user[1],
+                    'password': user[2],
+                    'balance': user[3],
+                    'first_name': user[4],
+                    'last_name': user[5],
+                    'telegram_username': user[6]
+                }
+                if verify_password(password, user_dict['password']):
+                    return user_dict
             return None
 
 # Функция для получения баланса пользователя
